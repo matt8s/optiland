@@ -225,9 +225,10 @@ class ScalarOpticalTrain:
     Native even-asphere ``coefficients[j]`` multiply ``r**(2*(j+1))`` in sag;
     their units are ``mm**(1-2*(j+1))``. Only exact native ``EvenAsphere`` types
     are supported, with finite scalar coefficients and conic constant and a
-    nonzero real radius. Infinite radius means a flat conic base; its radius
-    and conic are constant metadata, not differentiable parameters in that
-    limit. Polynomial coefficient gradients remain supported on a flat base.
+    nonzero real radius. Infinite radius in either native conic geometry means
+    a flat conic base. Its radius and conic are constant metadata, not
+    differentiable parameters in that limit. Polynomial coefficient gradients
+    remain supported on a flat base.
     With positive ``exp(+ikz)`` propagation, each surface multiplies the field
     by ``exp(1j * 2*pi/wavelength * (n_before-n_after) * sag(x,y))`` on its
     grid returned by ``field.coordinates()`` (including its center offset), then
@@ -506,10 +507,10 @@ class ScalarOpticalTrain:
                         setattr(aperture, name, _like(value, field.data))
                 mask = aperture.contains(x_grid, y_grid)
             geometry = copy(surface.geometry)
-            if type(geometry) is EvenAsphere and math.isinf(
+            if type(geometry) in (StandardGeometry, EvenAsphere) and math.isinf(
                 _real_value(geometry.radius, f"{label} radius", allow_infinite=True)
             ):
-                # Native sag is exactly polynomial on a flat base. Constant
+                # Native sag is flat or polynomial on a flat conic base. Constant
                 # base metadata avoids inf*0 in native Torch radius/conic
                 # backward paths without duplicating its sag implementation.
                 geometry.radius = math.inf

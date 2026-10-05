@@ -49,7 +49,7 @@ Define the required stop apertures explicitly before propagation.
 This is a paraxial surface approximation, not exact field remapping onto curved interfaces or general high-NA propagation.
 Native coaxial planes, spheres/conics, even aspheres, homogeneous lossless media, and radial/rectangular/elliptical apertures are supported.
 Even-asphere coefficients follow the native sag convention: ``coefficients[j]`` multiplies ``r**(2*(j+1))`` and has units ``mm**(1-2*(j+1))``.
-An infinite radius is a flat conic base; coefficient gradients remain supported, but radius and conic are constant metadata in that limit.
+For spheres/conics and even aspheres, an infinite radius is a flat conic base; asphere coefficient gradients remain supported, but radius and conic are constant metadata in that limit.
 Native planar thin lenses add their paraxial quadratic phase; their focal parameter is inverse reduced optical power, so collimated light focuses at ``n_after*f`` in a non-air outgoing medium.
 Native planar ConstantPhaseProfile and RadialPhaseProfile screens supply phase in radians, with amplitude multiplied by the square root of their efficiency.
 Rotations/decenters, mirrors/folds, negative gaps, GRIN, gain, coatings/scattering, unaudited phase profiles, curved thin-lens/phase interactions, and custom geometries are currently rejected.
