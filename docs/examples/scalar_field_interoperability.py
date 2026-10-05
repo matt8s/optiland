@@ -13,7 +13,6 @@ import hcipy as hp
 import numpy as np
 
 import optiland.backend as be
-from optiland.materials import IdealMaterial
 from optiland.optic import Optic
 from optiland.physical_apertures import RectangularAperture
 from optiland.physical_optics import boundary_diagnostic
@@ -50,20 +49,19 @@ def main() -> None:
     source.total_power = 1e-9
     field = from_hcipy(source)  # Coordinates -> mm; amplitude -> sqrt(W/mm²).
 
-    # Two coincident parabolic interfaces make a thin f=50 mm lens in air.
-    # This is a scalar phase-screen prescription, not curved-interface tracing.
+    # Reuse Optiland's native ideal thin lens (f=50 mm in air), with an
+    # explicit physical stop. The adapter uses its paraxial quadratic phase.
     optic = Optic()
     optic.surfaces.add(index=0, thickness=np.inf, material="air")
     optic.surfaces.add(
         index=1,
         z=0.0,
-        radius=50.0,
-        conic=-1.0,
-        material=IdealMaterial(1.5),
+        surface_type="paraxial",
+        f=50.0,
+        material="air",
         aperture=RectangularAperture(-0.15, 0.20, -0.18, 0.18),
     )
-    optic.surfaces.add(index=2, z=0.0, radius=-50.0, conic=-1.0, material="air")
-    optic.surfaces.add(index=3, z=50.0, surface_type="plane", material="air")
+    optic.surfaces.add(index=2, z=50.0, surface_type="plane", material="air")
     output = ScalarOpticalTrain.from_optic(optic).propagate(field)
     diagnostic = boundary_diagnostic(output, edge_width=4, threshold=0.01, warn=True)
 

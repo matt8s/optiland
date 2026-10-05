@@ -9,7 +9,7 @@ import pytest
 
 import optiland.backend as be
 from optiland.coordinate_system import CoordinateSystem
-from optiland.geometries.even_asphere import EvenAsphere
+from optiland.geometries.odd_asphere import OddAsphere
 from optiland.materials import AbbeMaterial, AbbeMaterialE, BaseMaterial, IdealMaterial
 from optiland.optic import Optic
 from optiland.phase.constant import ConstantPhaseProfile
@@ -699,7 +699,7 @@ def test_unsupported_physics_rejected_at_construction(set_test_backend, kind):
     elif kind == "interaction":
         surface.interaction_model = object()
     elif kind == "geometry":
-        surface.geometry = EvenAsphere(surface.geometry.cs, 25, coefficients=[0.1])
+        surface.geometry = OddAsphere(surface.geometry.cs, 25, coefficients=[0.1])
     elif kind == "grin":
         surface.material_post.propagation_model = object()
     elif kind == "negative_gap":

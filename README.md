@@ -153,7 +153,8 @@ Optiland is continually evolving to provide new functionalities for optical desi
 - [x] **Multi-Sequence Ray Tracing** (beta) - ghost paths, reverse traces, and sub-component views as alternate traversal orders over the same surfaces. Per-sequence first-order analysis, a visualization overlay, and a ghost-enumeration helper are follow-ups.
 - [ ] **Physical Optics Propagation** (Diffraction, beam clipping, Gaussian beam evolution)
   - [x] Sampled scalar fields and homogeneous angular-spectrum propagation (NumPy/PyTorch)
-  - [x] Coaxial, lossless scalar phase-screen prescriptions and physical-aperture clipping
+  - [x] Coaxial scalar phase-screen prescriptions (including even aspheres) and physical-aperture clipping
+  - [x] Explicit opt-in axial Beer–Lambert loss for homogeneous media (not exact curved-path absorption)
   - [x] Optional HCIPy field interchange and calibrated monochromatic detector-rate export
   - [ ] Exact curved/tilted-interface field remapping, folded frames, vector propagation, and Gaussian beamlets
   See the [sampled-field workflow](docs/examples/scalar_field_interoperability.rst) for unit conventions, supported prescription limits, and ESA Pyxel input.

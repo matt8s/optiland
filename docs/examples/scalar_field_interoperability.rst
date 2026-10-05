@@ -13,6 +13,7 @@ HCIPy owns source-wavefront generation, its field/grid representation, and expli
 Optiland owns the optional conversion into its field coordinates and its optical prescription.
 ESA Pyxel owns detector quantum efficiency, photon-to-charge conversion, exposure timing, and noise.
 Neither HCIPy nor Pyxel is a mandatory dependency for Optiland's propagation or radiometric conversion.
+ESA's detector package is distributed as ``pyxel-sim`` and imported as ``pyxel``; the unrelated game engine has the same import name.
 
 The optional ``from_hcipy`` and ``to_hcipy`` functions live in ``optiland.physical_optics.interoperability``.
 They preserve complex phase, rectangular axis order, sample pitch, grid center, vacuum wavelength, and integrated squared amplitude.
@@ -46,15 +47,28 @@ The optic's EPD, F-number, or object-NA setting controls ray-launch sampling; th
 Define the required stop apertures explicitly before propagation.
 
 This is a paraxial surface approximation, not exact field remapping onto curved interfaces or general high-NA propagation.
-Native coaxial planes, spheres/conics, homogeneous lossless media, and radial/rectangular/elliptical apertures are supported.
+Native coaxial planes, spheres/conics, even aspheres, homogeneous lossless media, and radial/rectangular/elliptical apertures are supported.
+Even-asphere coefficients follow the native sag convention: ``coefficients[j]`` multiplies ``r**(2*(j+1))`` and has units ``mm**(1-2*(j+1))``.
+An infinite radius is a flat conic base; coefficient gradients remain supported, but radius and conic are constant metadata in that limit.
 Native planar thin lenses add their paraxial quadratic phase; their focal parameter is inverse reduced optical power, so collimated light focuses at ``n_after*f`` in a non-air outgoing medium.
 Native planar ConstantPhaseProfile and RadialPhaseProfile screens supply phase in radians, with amplitude multiplied by the square root of their efficiency.
-Rotations/decenters, mirrors/folds, negative gaps, GRIN, absorption, coatings/scattering, unaudited phase profiles, curved thin-lens/phase interactions, and custom geometries are currently rejected.
+Rotations/decenters, mirrors/folds, negative gaps, GRIN, gain, coatings/scattering, unaudited phase profiles, curved thin-lens/phase interactions, and custom geometries are currently rejected.
 Fresnel reflection, vector polarization, obliquity factors, and curved-interface Jacobians are not included.
-Field, supported geometry, thin-lens focal parameter, phase coefficients, and vertex-gap Torch gradients are retained; material-index gradients are not supported.
+Field, supported geometry, asphere coefficients, thin-lens focal parameter, phase coefficients, and vertex-gap Torch gradients are retained; material-index and extinction-coefficient gradients are not supported.
+An ``ImageSurface`` is only a planar marker with no material-index or extinction change.
 Selected surfaces are revalidated before propagation, including sampled sag on transmitted coordinates.
 The input field and native optic/material state are not modified.
 Custom material callbacks must not mutate shared or external state; their arbitrary side effects cannot be rolled back by the adapter.
+
+Catalog glasses often have small nonzero extinction coefficients.
+The default ``absorption="reject"`` rejects all nonzero values rather than silently treating the glass as lossless.
+For a uniform axial-length approximation, explicitly select ``ScalarOpticalTrain.from_optic(optic, absorption="axial")``.
+This permits passive extinction ``kappa >= 0`` and multiplies amplitude once per outgoing vertex gap by ``exp(-2*pi*kappa*gap/wavelength)``.
+The corresponding power transmission is ``exp(-4*pi*kappa*gap/wavelength)``; both gap and vacuum wavelength are in millimeters, with no extra refractive-index factor.
+Extinction is evaluated at the micrometer material-lookup wavelength.
+This approximation uses vertex distances, not curved/sag-dependent layer thickness or angle-dependent path lengths; it does not implement complex-index ASM, interface flux, or Fresnel losses.
+Neither the incident-to-start path nor a trailing end-surface thickness is included.
+Keep radiometric calibration fixed so absorption, like aperture loss, remains in the exported detector rate.
 
 The grid is periodic under FFT propagation.
 Resolve surface phase slopes and aperture edges, provide sufficient window/padding, and check sampling/window convergence.
@@ -156,7 +170,7 @@ Install HCIPy in the example environment and run from the repository root::
    python -m docs.examples.scalar_field_interoperability --output-dir /path/to/results
    python -m docs.examples.scalar_field_interoperability --output-dir /path/to/torch-results --backend torch
 
-The example normalizes a Gaussian waist source to 1 nW of captured power, applies a clipped parabolic thin-lens prescription, and exports photon rates and a conditional PSF.
+The example normalizes a Gaussian waist source to 1 nW of captured power, applies a clipped native thin-lens prescription, and exports photon rates and a conditional PSF.
 The source power is assigned only once, before clipping and propagation.
 ESA Pyxel is not needed to generate the files.
 
