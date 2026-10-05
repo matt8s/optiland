@@ -7,6 +7,7 @@ Physical Optics
    :maxdepth: 1
 
    Gaussian beam propagation example <../examples/gaussian_beam_propagation>
+   Sampled-field interoperability <../examples/scalar_field_interoperability>
 
 Boundary occupancy diagnostic
 -----------------------------
@@ -47,3 +48,9 @@ being studied, and check grid convergence separately.
    :members:
    :undoc-members:
    :show-inheritance:
+
+Optional HCIPy interchange
+--------------------------
+
+.. automodule:: optiland.physical_optics.interoperability
+   :members: from_hcipy, to_hcipy
