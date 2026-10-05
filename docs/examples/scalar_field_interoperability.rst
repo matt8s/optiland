@@ -145,6 +145,12 @@ The relevant Pyxel configuration is::
 Readout times are absolute sampling times: these two intervals are 0.01 and 0.015 seconds, not two independent exposures of 0.01 and 0.025 seconds.
 This deterministic example leaves shot noise disabled; add the appropriate Pyxel noise models only when needed.
 Import illumination through the pipeline rather than preassigning a bucket that the exposure runner will clear.
+Save the configuration as a YAML file and replace ``image_file`` with the absolute path to the exported photon-rate file.
+With ESA ``pyxel-sim`` installed, load and run that configuration through its existing API::
+
+   import pyxel
+   config = pyxel.load("/path/to/example.yaml")
+   results = pyxel.run_mode(config)
 
 For optical blur instead of absolute illumination, ``normalized_psf`` produces a unit-sum kernel from an already detector-sampled nonnegative intensity array.
 Save it with ``numpy.save`` and use Pyxel ``load_psf`` after initializing scene photons.
