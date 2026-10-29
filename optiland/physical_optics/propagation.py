@@ -166,4 +166,5 @@ def angular_spectrum(
         dy=field.dy,
         wavelength=field.wavelength,
         refractive_index=field.refractive_index,
+        center=field.center,
     )

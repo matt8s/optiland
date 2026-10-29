@@ -7,6 +7,7 @@ Physical Optics
    :maxdepth: 1
 
    Gaussian beam propagation example <../examples/gaussian_beam_propagation>
+   Scalar optical train contract <../examples/scalar_optical_train>
 
 Boundary occupancy diagnostic
 -----------------------------

@@ -60,6 +60,9 @@ class ScalarField(Generic[BEArrayT]):
         wavelength: Vacuum wavelength in the same unit as ``dx``.
         dy: Sample spacing along y. Defaults to ``dx``.
         refractive_index: Homogeneous-medium refractive index. Defaults to 1.
+        center: Coordinates of the center of the sampling grid as ``(x, y)``
+            in the field's spatial unit. Defaults to the optical axis. This
+            describes the grid location, not a displacement of its contents.
 
     Raises:
         TypeError: If ``data`` does not belong to the active backend.
@@ -73,6 +76,8 @@ class ScalarField(Generic[BEArrayT]):
         wavelength: float,
         dy: float | None = None,
         refractive_index: float = 1.0,
+        *,
+        center: tuple[float, float] = (0.0, 0.0),
     ) -> None:
         if not isinstance(data, be.ndarray):
             raise TypeError("data must be a NumPy array or PyTorch tensor.")
@@ -90,6 +95,15 @@ class ScalarField(Generic[BEArrayT]):
         self.dy = self.dx if dy is None else _positive_float(dy, "dy")
         self.wavelength = _positive_float(wavelength, "wavelength")
         self.refractive_index = _positive_float(refractive_index, "refractive_index")
+        if (
+            not isinstance(center, (tuple, list))
+            or len(center) != 2
+            or any(not isinstance(value, Real) for value in center)
+        ):
+            raise TypeError("center must contain two real scalar coordinates.")
+        self.center = (float(center[0]), float(center[1]))
+        if not all(math.isfinite(value) for value in self.center):
+            raise ValueError("center coordinates must be finite.")
         self._backend = backend
 
     @property
@@ -109,12 +123,12 @@ class ScalarField(Generic[BEArrayT]):
         return be.sum(self.intensity) * self.dx * self.dy
 
     def coordinates(self) -> tuple[BEArrayT, BEArrayT]:
-        """Return centered one-dimensional x and y coordinate arrays."""
+        """Return one-dimensional x and y coordinates in the field's plane."""
         self._ensure_active_backend()
         ny, nx = self.shape
         return (
-            _centered_axis(nx, self.dx, like=self.data),
-            _centered_axis(ny, self.dy, like=self.data),
+            _centered_axis(nx, self.dx, like=self.data) + self.center[0],
+            _centered_axis(ny, self.dy, like=self.data) + self.center[1],
         )
 
     def propagate(
@@ -150,7 +164,7 @@ class ScalarField(Generic[BEArrayT]):
         return (
             f"ScalarField(shape={self.shape}, dx={self.dx}, dy={self.dy}, "
             f"wavelength={self.wavelength}, "
-            f"refractive_index={self.refractive_index})"
+            f"refractive_index={self.refractive_index}, center={self.center})"
         )
 
 
