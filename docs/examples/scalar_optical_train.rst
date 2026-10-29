@@ -23,7 +23,7 @@ For a lossless lens followed by a homogeneous gap::
    output = train.propagate(field)
 
 Planes, units, and normalization
--------------------------------
+------------------------------------------------------------
 
 ``start_surface`` and ``end_surface`` select an inclusive range of surface
 indices; the object at index zero cannot be selected.
