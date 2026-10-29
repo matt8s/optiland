@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from copy import copy
 from numbers import Integral, Real
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import optiland.backend as be
 from optiland.backend.utils import is_torch_tensor
@@ -25,6 +25,7 @@ from optiland.physical_apertures import (
     RectangularAperture,
 )
 from optiland.physical_optics.field import ScalarField, _cast_real_like
+from optiland.physical_optics.propagation import _phase_precision
 from optiland.propagation.homogeneous import HomogeneousPropagation
 from optiland.surfaces.image_surface import ImageSurface
 from optiland.surfaces.standard_surface import Surface
@@ -91,7 +92,8 @@ def _index(
     material: BaseMaterial,
     wavelength_um: float,
     label: str,
-) -> float:
+    absorption: Literal["reject", "axial"],
+) -> tuple[float, float]:
     """Evaluate on a shallow material view to leave source caches untouched."""
     for property_name in ("n", "k"):
         bounds = material.spectral_range(property_name)
@@ -112,11 +114,16 @@ def _index(
     k = view.k(wavelength_um)
     index = _real_value(n, f"{label} refractive index")
     extinction = _real_value(k, f"{label} extinction coefficient")
-    if index <= 0 or extinction != 0:
+    if absorption == "reject" and (index <= 0 or extinction != 0):
         raise ValueError(
             f"{label}: only positive, real, lossless indices are supported."
         )
-    return index
+    if index <= 0 or extinction < 0:
+        raise ValueError(
+            f"{label}: axial absorption requires a positive real index and "
+            "nonnegative passive extinction coefficient (no gain)."
+        )
+    return index, extinction
 
 
 def _validate_profile(profile, label: str) -> None:
@@ -189,7 +196,7 @@ class ScalarOpticalTrain:
     Native ``Plane``, ``StandardGeometry`` (sphere/conic), and ``EvenAsphere``
     (conic plus even radial polynomial) surfaces must be
     coaxial with global +z, transmissive, homogeneous, and uncoated.
-    Materials must have positive real indices and exactly zero extinction.
+    Materials must be lossless unless ``absorption="axial"`` is selected.
     Radial, rectangular, and elliptical physical apertures are supported.
     Only explicit ``surface.aperture`` objects clip the supplied field.
     ``Optic.aperture`` (EPD/imageFNO/objectNA) controls ray-launch/pupil sampling;
@@ -227,8 +234,17 @@ class ScalarOpticalTrain:
     grid returned by ``field.coordinates()`` (including its center offset), then
     ASM propagates the vertex gap in the outgoing medium.
 
-    Every nonzero extinction coefficient is rejected, including arbitrarily
-    small catalog values.
+    The default ``absorption="reject"`` rejects every nonzero extinction
+    coefficient, including arbitrarily small catalog values. The explicit
+    ``"axial"`` opt-in permits passive extinction ``kappa >= 0`` and applies
+    homogeneous Beer--Lambert amplitude ``exp(-2*pi*kappa*gap/wavelength)``
+    once per outgoing vertex gap, using that surface's ``material_post`` at
+    the field's vacuum wavelength. This uniform axial-length approximation
+    has no extra refractive-index factor. It does not model curved/sag-dependent
+    or angle/secant path lengths, interface flux, Fresnel reflection, coatings,
+    or complex-index ASM. Zero gaps and the unpropagated trailing medium add
+    no attenuation; a differentiable zero gap retains the positive one-sided
+    absorption derivative. Absorbed power is not renormalized.
     A native thin lens adds the **paraxial quadratic** phase
     ``-2*pi/wavelength * (x*x+y*y)/(2*f)``: its ``f`` is inverse reduced
     optical power, so a collimated input focuses at ``n_after*f`` rather than
@@ -268,13 +284,20 @@ class ScalarOpticalTrain:
     Args:
         surfaces: Selected surfaces in sequential order. Prefer ``from_optic``.
         start_surface: Original index of the first selected surface.
+        absorption: ``"reject"`` (default) requires exactly lossless materials;
+            ``"axial"`` opts into uniform vertex-gap absorption only.
     """
 
     def __init__(
         self,
         surfaces: tuple[Surface, ...],
         start_surface: int = 1,
+        *,
+        absorption: Literal["reject", "axial"] = "reject",
     ) -> None:
+        if not isinstance(absorption, str) or absorption not in ("reject", "axial"):
+            raise ValueError("absorption must be either 'reject' or 'axial'.")
+        self._absorption = absorption
         self._surfaces = tuple(surfaces)
         self.start_surface = start_surface
         self.end_surface = start_surface + len(self._surfaces) - 1
@@ -287,6 +310,8 @@ class ScalarOpticalTrain:
         optic: Optic,
         start_surface: int = 1,
         end_surface: int | None = None,
+        *,
+        absorption: Literal["reject", "axial"] = "reject",
     ) -> ScalarOpticalTrain:
         """Select an inclusive range, excluding the object at index zero.
 
@@ -294,6 +319,8 @@ class ScalarOpticalTrain:
             optic: Sequential Optiland optic with a native surface group.
             start_surface: First included surface index. Defaults to 1.
             end_surface: Last included surface index, or the last listed surface.
+            absorption: ``"reject"`` (default) or the bounded uniform axial
+                absorption approximation ``"axial"``; see the class docstring.
 
         Returns:
             ScalarOpticalTrain: Validated read-only view of the selected train.
@@ -321,6 +348,7 @@ class ScalarOpticalTrain:
         return cls(
             surfaces[start_surface : end_surface + 1],
             int(start_surface),
+            absorption=absorption,
         )
 
     def _validate_structure(self) -> None:
@@ -451,17 +479,20 @@ class ScalarOpticalTrain:
             for material in (surface.material_pre, surface.material_post):
                 if id(material) not in indices:
                     indices[id(material)] = _index(
-                        material, field.wavelength * 1000, label
+                        material, field.wavelength * 1000, label, self._absorption
                     )
                 media.append(indices[id(material)])
-            n_before, n_after = media
+            n_before, extinction_before = media[0]
+            n_after, extinction = media[1]
             if offset == 0 and not math.isclose(
                 field.refractive_index, n_before, rel_tol=1e-7, abs_tol=1e-12
             ):
                 raise ValueError(
                     "field refractive_index does not match the incident material."
                 )
-            if type(surface) is ImageSurface and n_before != n_after:
+            if type(surface) is ImageSurface and (
+                n_before != n_after or extinction_before != extinction
+            ):
                 raise ValueError(
                     f"{label}: ImageSurface cannot change the material index "
                     "or extinction coefficient."
@@ -544,6 +575,24 @@ class ScalarOpticalTrain:
                     raise ValueError(
                         f"{label}: outgoing vertex gap must be nonnegative."
                     )
+                if self._absorption == "axial" and extinction != 0:
+                    # No abs(gap): at zero the forward absorption derivative
+                    # remains -2*pi*kappa/wavelength. Material metadata is scalar;
+                    # the live gap retains its geometry gradient graph.
+                    attenuation_gap = (
+                        _phase_precision(gap, field.data)
+                        if isinstance(gap, be.ndarray)
+                        else float(gap)
+                    )
+                    exponent = (
+                        -2 * be.pi * (extinction * attenuation_gap) / field.wavelength
+                    )
+                    if isinstance(exponent, Real) and is_torch_tensor(field.data):
+                        exponent = field.data.real.new_tensor(exponent)
+                    attenuation = _cast_real_like(be.exp(exponent), field.data)
+                    if not bool(be.all(be.isfinite(attenuation))):
+                        raise ValueError(f"{label}: axial attenuation must be finite.")
+                    screen = screen * attenuation
             screens.append((screen, n_after, gap))
 
         result = field
