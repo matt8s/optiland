@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .adapters import from_nsq_irradiance
 from .image import RadiometricImage
 
-__all__ = ["RadiometricImage"]
+__all__ = ["RadiometricImage", "from_nsq_irradiance"]
