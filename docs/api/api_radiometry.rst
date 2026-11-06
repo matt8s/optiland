@@ -58,7 +58,7 @@ a tracer does not provide. Changing the active backend after construction raises
 an error when a derived measurement is requested.
 
 Spectral and photometric results
--------------------------------
+--------------------------------
 
 This interface accepts two-dimensional monochromatic images. Existing NSQ
 ``SpectralResult`` irradiance values are already integrated within each

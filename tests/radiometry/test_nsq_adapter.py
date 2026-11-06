@@ -157,3 +157,55 @@ def test_native_detector_power_and_photons(set_test_backend):
         photon_grad = torch.autograd.grad(be.sum(image.photon_rate_per_s), flux)[0]
         assert_allclose(power_grad, 1, rtol=1e-12, atol=0)
         assert_allclose(photon_grad, 2.5170582837713547e18, rtol=1e-12, atol=0)
+
+
+@pytest.mark.parametrize("precision,rtol", [("float64", 1e-12), ("float32", 5e-7)])
+def test_native_high_resolution_roundoff_and_stale_snapshot_rejection(
+    set_test_backend, precision, rtol
+):
+    from optiland.radiometry import from_nsq_irradiance
+
+    try:
+        be.set_precision(precision)
+        scene = NSQScene()
+        scene.add_source(
+            "S",
+            CoordinateSystem(),
+            CollimatedSourceConfig(
+                spectrum=Spectrum.monochromatic(0.5),
+                total_flux=1e-9,
+                aperture_radius=2,
+            ),
+        )
+        scene.add_detector(
+            "D",
+            CoordinateSystem(z=10),
+            IrradianceDetectorConfig(
+                width=6.4,
+                height=4.8,
+                num_pixels_x=128,
+                num_pixels_y=128,
+                splat="bilinear",
+            ),
+        )
+        backend = (
+            NumpyBackend(seed=0)
+            if be.get_backend() == "numpy"
+            else TorchBackend(seed=0)
+        )
+        result = scene.trace(num_rays=512, seed=0, backend=backend).detectors["D"]
+        kwargs = dict(
+            x_edges_mm=np.linspace(-3.2, 3.2, 129),
+            y_edges_mm=np.linspace(-2.4, 2.4, 129),
+            wavelength_um=0.5,
+        )
+        image = from_nsq_irradiance(result, **kwargs)
+        assert_allclose(image.total_power_w, 1e-9, rtol=rtol, atol=0)
+        assert_allclose(
+            be.sum(image.photon_rate_per_s), 2.5170582837713547e9, rtol=rtol, atol=0
+        )
+        result.irradiance *= 1.01
+        with pytest.raises(ValueError, match="irradiance"):
+            from_nsq_irradiance(result, **kwargs)
+    finally:
+        be.set_precision("float64")

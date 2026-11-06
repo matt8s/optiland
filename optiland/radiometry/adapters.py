@@ -28,7 +28,7 @@ def _consistent(
     reference: ScalarOrArrayT,
     name: str,
     *,
-    rtol: float = 0,
+    rtol: ScalarOrArrayT = 0,
     atol: ScalarOrArrayT = 0,
 ) -> None:
     if isinstance(reference, be.ndarray):
@@ -105,16 +105,27 @@ def from_nsq_irradiance(
             result.x_coords,
             result.y_coords,
             result.total_flux,
+            x_edges_mm,
+            y_edges_mm,
         )
     )
+    width_roundoff = []
     for edges, centers, name in (
         (image.x_edges_mm, result.x_coords, "x_coords"),
         (image.y_edges_mm, result.y_coords, "y_coords"),
     ):
         scale = be.maximum(be.max(be.abs(edges)), edges[-1] - edges[0])
         _consistent((edges[:-1] + edges[1:]) / 2, centers, name, atol=8 * eps * scale)
+        # Grid construction and casting can each round at the axis scale,
+        # even near zero. Two endpoints give a width uncertainty of 4*eps*S;
+        # the detector instead computes its area from width / pixel count.
+        width_roundoff.append(4 * eps * scale / (edges[1:] - edges[:-1]))
+    ex, ey = width_roundoff[0][None, :], width_roundoff[1][:, None]
     _consistent(
-        image.irradiance_w_per_mm2, result.irradiance, "irradiance", rtol=16 * eps
+        image.irradiance_w_per_mm2,
+        result.irradiance,
+        "irradiance",
+        rtol=16 * eps + ex + ey + ex * ey,
     )
     _consistent(
         image.total_power_w,
