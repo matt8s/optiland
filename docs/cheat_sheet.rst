@@ -243,6 +243,9 @@ New to these concepts? See the :ref:`glossary` first.
 
    input_data = {"optic": lens}
    problem.add_operand(operand_type="f2", target=50.0, weight=1, input_data=input_data)
+   # EFL of a lens group (surfaces 1 through 2), as in lens.paraxial.f2_range(1, 2)
+   problem.add_operand(operand_type="f2_range", target=80.0, weight=1,
+                       input_data={"optic": lens, "start": 1, "end": 2})
    # "num_rays" is a ring count for "hexapolar": 100 rings trace 30301 rays per evaluation
    problem.add_operand(operand_type="rms_spot_size", target=0.0, weight=1,
                        input_data={"optic": lens, "field_index": 1, "wavelength_index": 0,
@@ -352,3 +355,21 @@ New to these concepts? See the :ref:`glossary` first.
    result = scene.trace(num_rays=2_000, max_depth=16, seed=42)
    loss = ((result.detectors["D"].data - target) ** 2).mean()
    loss.backward()                                # gradients flow to scene params
+
+----
+
+24. Generate ISO 10110 fabrication drawings
+-------------------------------------------
+
+.. code-block:: python
+
+   from optiland.iso10110 import DrawingSpec, ISO10110Report
+
+   spec = DrawingSpec(lens, project_name="My lens")
+   spec.set_surface(1, irregularity=0.5, centration=0.5, imperfections="2x0.04")
+   spec.set_element(0, birefringence=10, bubbles="1x0.16", nh_class="NH040")
+   spec.set_title(0, part_number="OPT-001", drawn_by="AB")
+
+   report = ISO10110Report(spec)
+   report.save_pdf("drawings.pdf")   # one page per element
+   report.save_dxf("dxf/")           # requires pip install optiland[manufacturing]
