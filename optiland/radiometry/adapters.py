@@ -20,6 +20,7 @@ from optiland.utils import machine_eps
 if TYPE_CHECKING:
     from optiland._types import BEArray, BEArrayT, ScalarOrArrayT
     from optiland.nonsequential.results import IrradianceMap
+    from optiland.physical_optics.field import ScalarField
 
 
 def _consistent(
@@ -157,4 +158,47 @@ def from_sequential_irradiance(
     x, y, areas = _grid_geometry(density, x_edges_mm=x_edges_mm, y_edges_mm=y_edges_mm)
     return RadiometricImage(
         density * areas, x_edges_mm=x, y_edges_mm=y, wavelength_um=wavelength_um
+    )
+
+
+def from_scalar_field(
+    field: ScalarField[BEArrayT],
+    *,
+    length_unit_mm: float,
+    irradiance_scale_w_per_mm2: float,
+) -> RadiometricImage[BEArrayT]:
+    """Integrate an explicitly calibrated scalar field over its sample cells.
+
+    Args:
+        field: Monochromatic field after coherent superposition and propagation.
+        length_unit_mm: Millimeters per field length unit, applied to both
+            sampling and vacuum wavelength. For fields in mm, use one.
+        irradiance_scale_w_per_mm2: W/mm² per unit of squared scalar amplitude.
+            Keep this fixed through attenuation and changes in capture window.
+
+    Returns:
+        Measurement on cells extending half a pitch beyond the field's sample
+        centers, retaining the field's coordinates and available gradients.
+
+    Notes:
+        Each intensity sample approximates its cell mean by rectangle quadrature;
+        check sampling convergence. The calibration must represent normal flux
+        in the intended physical regime, such as a paraxial beam on a transverse
+        plane. No electric-field, polarization, or obliquity factor is assumed.
+    """
+    from optiland.physical_optics.field import ScalarField
+
+    if not isinstance(field, ScalarField):
+        raise TypeError("field must be a ScalarField.")
+    unit = _real_scalar(length_unit_mm, "length_unit_mm", positive=True)
+    density = _calibrated_intensity(field.intensity, irradiance_scale_w_per_mm2)
+    x, y = field.coordinates()
+    x_edges = be.concatenate((x - field.dx / 2, x[-1:] + field.dx / 2)) * unit
+    y_edges = be.concatenate((y - field.dy / 2, y[-1:] + field.dy / 2)) * unit
+    x, y, areas = _grid_geometry(density, x_edges_mm=x_edges, y_edges_mm=y_edges)
+    return RadiometricImage(
+        density * areas,
+        x_edges_mm=x,
+        y_edges_mm=y,
+        wavelength_um=field.wavelength * unit * 1000,
     )

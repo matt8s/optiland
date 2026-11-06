@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .adapters import from_nsq_irradiance, from_sequential_irradiance
+from .adapters import from_nsq_irradiance, from_scalar_field, from_sequential_irradiance
 from .image import RadiometricImage
 
-__all__ = ["RadiometricImage", "from_nsq_irradiance", "from_sequential_irradiance"]
+__all__ = [
+    "RadiometricImage",
+    "from_nsq_irradiance",
+    "from_sequential_irradiance",
+    "from_scalar_field",
+]
