@@ -20,6 +20,7 @@ This section contains examples of typical analysis tasks that can be performed w
     analysis/jones_pupil
     analysis/pupil_aberration
     analysis/irradiance
+    analysis/radiometry
     analysis/through_focus_spot_diagram
     analysis/angle_vs_image_height_through_pupil
     analysis/angle_vs_image_height_through_field
