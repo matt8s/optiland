@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import optiland.backend as be
 from optiland.backend.utils import is_torch_tensor
 from optiland.radiometry._core import (
+    _calibrated_intensity,
     _grid_geometry,
     _real_array,
     _real_scalar,
@@ -17,7 +18,7 @@ from optiland.radiometry.image import RadiometricImage
 from optiland.utils import machine_eps
 
 if TYPE_CHECKING:
-    from optiland._types import BEArray, ScalarOrArrayT
+    from optiland._types import BEArray, BEArrayT, ScalarOrArrayT
     from optiland.nonsequential.results import IrradianceMap
 
 
@@ -121,3 +122,39 @@ def from_nsq_irradiance(
         rtol=64 * eps * max(1, math.ceil(math.log2(nx * ny + 1))),
     )
     return image
+
+
+def from_sequential_irradiance(
+    irradiance_xy: BEArrayT,
+    *,
+    x_edges_mm: BEArray,
+    y_edges_mm: BEArray,
+    wavelength_um: float,
+    watts_per_ray_weight: float,
+) -> RadiometricImage[BEArrayT]:
+    """Adapt one selected sequential irradiance entry with explicit calibration.
+
+    Args:
+        irradiance_xy: Ray-weight density per mm², in the producer's ``(nx, ny)``
+            order, from one ``IncoherentIrradiance.data[field][wavelength]`` entry.
+        x_edges_mm: That entry's local detector x cell edges in mm.
+        y_edges_mm: That entry's local detector y cell edges in mm.
+        wavelength_um: Declared monochromatic vacuum wavelength in micrometers.
+        watts_per_ray_weight: Fixed W per ray-weight unit at launch. Use one
+            for rays already calibrated in watts, such as ``SMFSource`` rays.
+
+    Returns:
+        Measurement in ``(ny, nx)`` order retaining available input gradients.
+
+    Notes:
+        Select a known monochromatic entry with scalar-power weights. Ordinary
+        unit-weight pupil rays require an explicit launch calibration; surviving
+        ray counts do not determine it. Polarized field weights are not generally
+        power. This function neither retraces rays nor renormalizes capture loss.
+    """
+    density = _calibrated_intensity(irradiance_xy, watts_per_ray_weight)
+    density = be.transpose(density)
+    x, y, areas = _grid_geometry(density, x_edges_mm=x_edges_mm, y_edges_mm=y_edges_mm)
+    return RadiometricImage(
+        density * areas, x_edges_mm=x, y_edges_mm=y, wavelength_um=wavelength_um
+    )
