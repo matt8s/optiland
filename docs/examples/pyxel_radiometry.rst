@@ -3,11 +3,13 @@
 Radiometry and Pyxel handoff
 ============================
 
-Optiland's radiometry helpers convert a calibrated monochromatic scalar field
-into expected photons per detector pixel per second.
-They use NumPy or PyTorch arrays and require no detector package.
+Optiland's :doc:`shared radiometry interface <../api/api_radiometry>` converts
+calibrated monochromatic ray results and scalar fields into captured power,
+irradiance, exposure energy, and incident photon rates.
+It uses NumPy or PyTorch arrays and requires no detector package.
 ESA's optional ``pyxel-sim`` package can consume the exported NumPy arrays.
-The handoff below is checked against Pyxel 3.0.2.
+The handoff below was checked against Pyxel 3.0.2; this native interface does
+not establish ongoing real-dependency CI for other Pyxel versions.
 
 Calibration and sampling
 ------------------------
@@ -57,22 +59,16 @@ calibration of 1 pW/mm² per unit of squared amplitude:
    import numpy as np
    import optiland.backend as be
    from optiland.physical_optics import gaussian_field
-   from optiland.physical_optics.radiometry import (
-       field_to_irradiance,
-       irradiance_to_photon_rate,
-   )
+   from optiland.radiometry import from_scalar_field
 
    field = gaussian_field(
        (96, 128), dx=0.01, dy=0.02,
        wavelength=0.0005, waist_radius=0.1,
    )
-   irradiance = field_to_irradiance(
-       field, irradiance_scale_w_per_mm2=1e-12,
+   measurement = from_scalar_field(
+       field, length_unit_mm=1, irradiance_scale_w_per_mm2=1e-12,
    )
-   rate = irradiance_to_photon_rate(
-       irradiance, dx_mm=0.01, dy_mm=0.02,
-       wavelength_nm=500.0, binning=(2, 2),
-   )
+   rate = measurement.binning((2, 2)).photon_rate_per_s
    np.save("photon_rate.npy", be.to_numpy(rate), allow_pickle=False)
 
 The exported array has 48 rows and 64 columns, with vertical and horizontal
@@ -80,6 +76,22 @@ pixel pitches of 40 µm and 20 µm, respectively.
 NumPy export is an explicit host conversion and ends the differentiable path.
 The file contains the array only: record wavelength, calibration, pitch,
 orientation, and placement with the detector configuration.
+
+The existing array-returning helpers remain supported and share the same
+calibration and photon-conversion arithmetic. For the field above, the
+equivalent calls are:
+
+.. code-block:: python
+
+   from optiland.physical_optics.radiometry import (
+       field_to_irradiance, irradiance_to_photon_rate,
+   )
+
+   irradiance = field_to_irradiance(field, irradiance_scale_w_per_mm2=1e-12)
+   rate = irradiance_to_photon_rate(
+       irradiance, dx_mm=0.01, dy_mm=0.02,
+       wavelength_nm=500.0, binning=(2, 2),
+   )
 
 Use this entry in an existing Pyxel pipeline's ``photon_collection`` group:
 

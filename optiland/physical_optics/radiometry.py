@@ -8,37 +8,20 @@ explicit host conversion; no detector package or custom file format is needed.
 
 from __future__ import annotations
 
-import math
-from numbers import Integral, Real
 from typing import TYPE_CHECKING
 
-from scipy.constants import c, h
-
 import optiland.backend as be
-from optiland.backend.utils import is_torch_tensor
-from optiland.physical_optics.field import ScalarField, _positive_float
+from optiland.physical_optics.field import ScalarField
+from optiland.radiometry._core import (
+    _calibrated_intensity,
+    _photon_rate,
+    _real_scalar,
+    _sum_blocks,
+    _validate_image,
+)
 
 if TYPE_CHECKING:
     from optiland._types import BEArrayT
-
-
-def _validate_image(image: BEArrayT, name: str) -> None:
-    if not isinstance(image, be.ndarray):
-        raise TypeError(f"{name} must be a NumPy array or PyTorch tensor.")
-    backend = be.get_backend()
-    if (backend == "torch") != is_torch_tensor(image):
-        raise TypeError(f"{name} must belong to the active {backend!r} backend.")
-    is_floating = (
-        image.is_floating_point() if is_torch_tensor(image) else image.dtype.kind == "f"
-    )
-    if not is_floating:
-        raise TypeError(f"{name} must contain real floating-point values.")
-    if image.ndim != 2 or any(size == 0 for size in image.shape):
-        raise ValueError(f"{name} must be a nonempty two-dimensional array.")
-    if not bool(be.all(be.isfinite(image))):
-        raise ValueError(f"{name} must contain only finite values.")
-    if bool(be.any(image < 0)):
-        raise ValueError(f"{name} must be nonnegative.")
 
 
 def field_to_irradiance(
@@ -74,17 +57,10 @@ def field_to_irradiance(
     """
     if not isinstance(field, ScalarField):
         raise TypeError("field must be a ScalarField.")
-    scale = irradiance_scale_w_per_mm2
-    if not isinstance(scale, Real) or isinstance(scale, bool):
-        raise TypeError("irradiance_scale_w_per_mm2 must be a real scalar.")
-    scale = float(scale)
-    if not math.isfinite(scale) or scale < 0:
-        raise ValueError("irradiance_scale_w_per_mm2 must be finite and nonnegative.")
-    intensity = field.intensity
-    _validate_image(intensity, "field intensity")
-    irradiance = intensity * scale
-    _validate_image(irradiance, "irradiance")
-    return irradiance
+    scale = _real_scalar(
+        irradiance_scale_w_per_mm2, "irradiance_scale_w_per_mm2", positive=False
+    )
+    return _calibrated_intensity(field.intensity, scale)
 
 
 def irradiance_to_photon_rate(
@@ -128,35 +104,11 @@ def irradiance_to_photon_rate(
         amplitudes, and does not restore power lost outside the sampled plane.
     """
     _validate_image(irradiance, "irradiance")
-    for value, name in (
-        (dx_mm, "dx_mm"),
-        (dy_mm, "dy_mm"),
-        (wavelength_nm, "wavelength_nm"),
-    ):
-        if isinstance(value, bool):
-            raise TypeError(f"{name} must be a real scalar.")
-    dx_mm = _positive_float(dx_mm, "dx_mm")
-    dy_mm = _positive_float(dy_mm, "dy_mm")
-    wavelength_nm = _positive_float(wavelength_nm, "wavelength_nm")
-    if not isinstance(binning, tuple) or len(binning) != 2:
-        raise TypeError("binning must be a (by, bx) tuple of positive integers.")
-    if any(
-        not isinstance(value, Integral) or isinstance(value, bool) for value in binning
-    ):
-        raise TypeError("binning must contain positive integers.")
-    by, bx = (int(value) for value in binning)
-    if by <= 0 or bx <= 0:
-        raise ValueError("binning factors must be positive.")
-    ny, nx = irradiance.shape
-    if ny % by or nx % bx:
-        raise ValueError("irradiance dimensions must be divisible by binning factors.")
-    conversion = dx_mm * dy_mm * (wavelength_nm * 1e-9 / (h * c))
-    rate = irradiance * conversion
-    if binning != (1, 1):
-        blocks = be.reshape(rate, (ny // by, by, nx // bx, bx))
-        rate = be.sum(be.sum(blocks, axis=3), axis=1)
-    _validate_image(rate, "photon rate")
-    return rate
+    dx_mm = _real_scalar(dx_mm, "dx_mm", positive=True)
+    dy_mm = _real_scalar(dy_mm, "dy_mm", positive=True)
+    wavelength_nm = _real_scalar(wavelength_nm, "wavelength_nm", positive=True)
+    rate = _photon_rate(irradiance, wavelength_nm * 1e-9, watts_per_value=dx_mm * dy_mm)
+    return _sum_blocks(rate, binning)
 
 
 def normalized_psf(detector_sampled_intensity: BEArrayT) -> BEArrayT:

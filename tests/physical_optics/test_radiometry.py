@@ -329,3 +329,48 @@ def test_overflowed_rates_and_calibration_rejected(set_test_backend):
         field = ScalarField(be.full((2, 2), 1e150), dx=1, wavelength=0.5)
         with pytest.raises(ValueError, match="finite"):
             field_to_irradiance(field, irradiance_scale_w_per_mm2=1e20)
+
+
+@pytest.mark.parametrize("precision,rtol", [("float64", 1e-12), ("float32", 5e-7)])
+def test_legacy_and_native_calibration_share_physical_references(
+    set_test_backend, precision, rtol
+):
+    from optiland.radiometry import from_scalar_field
+
+    try:
+        be.set_precision(precision)
+        amplitude = be.ones((4, 6))
+        field = ScalarField(amplitude, dx=0.01, dy=0.02, wavelength=0.0005)
+        scale = 1e-9 / (24 * 0.01 * 0.02)
+        native = from_scalar_field(
+            field, length_unit_mm=1, irradiance_scale_w_per_mm2=scale
+        )
+        density = field_to_irradiance(field, irradiance_scale_w_per_mm2=scale)
+        legacy = irradiance_to_photon_rate(
+            density, dx_mm=0.01, dy_mm=0.02, wavelength_nm=500, binning=(2, 3)
+        )
+        assert_allclose(native.total_power_w, 1e-9, rtol=rtol, atol=0)
+        assert_allclose(be.sum(legacy), RATE_1_NW_500_NM, rtol=rtol, atol=0)
+        assert_allclose(
+            legacy, native.binning((2, 3)).photon_rate_per_s, rtol=rtol, atol=0
+        )
+        crop = ScalarField(field.data[:2, :3], dx=0.01, dy=0.02, wavelength=0.0005)
+        cropped = from_scalar_field(
+            crop, length_unit_mm=1, irradiance_scale_w_per_mm2=scale
+        )
+        cropped_legacy = irradiance_to_photon_rate(
+            density[:2, :3], dx_mm=0.01, dy_mm=0.02, wavelength_nm=500
+        )
+        assert_allclose(cropped.total_power_w, 0.25e-9, rtol=rtol, atol=0)
+        assert_allclose(cropped_legacy, cropped.photon_rate_per_s, rtol=rtol, atol=0)
+        if be.get_backend() == "torch":
+            import torch
+
+            native_gradient = torch.autograd.grad(
+                be.sum(native.photon_rate_per_s), amplitude, retain_graph=True
+            )[0]
+            legacy_gradient = torch.autograd.grad(be.sum(legacy), amplitude)[0]
+            for gradient in (native_gradient, legacy_gradient):
+                assert_allclose(gradient, 2.0975485698094622e8, rtol=rtol, atol=0)
+    finally:
+        be.set_precision("float64")
